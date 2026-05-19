@@ -14,48 +14,43 @@ export function Auth() {
   const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        if (error.message.toLowerCase().includes('email not confirmed')) {
-          throw new Error('Email chưa được xác nhận. Vui lòng kiểm tra hộp thư đến (hoặc thư rác) để xác nhận tài khoản, hoặc tắt "Confirm email" trong cài đặt Supabase.');
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin + '/auth'
+          }
+        });
+        if (error) throw error;
+        
+        alert('Đăng ký thành công! Hãy kiểm tra email của bồ để xác thực tài khoản nếu có, hoặc đăng nhập ngay nhé.');
+        setIsSignUp(false);
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          if (error.message.toLowerCase().includes('email not confirmed')) {
+            throw new Error('Email chưa được xác nhận. Vui lòng kiểm tra hộp thư đến (hoặc thư rác) để xác nhận tài khoản, hoặc tắt "Confirm email" trong cài đặt Supabase.');
+          }
+          throw new Error(error.message === 'Invalid login credentials' ? 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.' : error.message);
         }
-        throw new Error(error.message === 'Invalid login credentials' ? 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.' : error.message);
-      }
-      
-      const authSession = data.session;
-      if (authSession) {
-        if (authSession.user.user_metadata?.sheet_url) {
-          navigate('/record');
-        } else {
-          navigate('/activation');
+        
+        const authSession = data.session;
+        if (authSession) {
+          navigate('/dashboard');
         }
       }
     } catch (err: any) {
       setError(err.message || 'Đã có lỗi xảy ra');
+      alert(err.message || 'Đã có lỗi xảy ra');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSignUp) {
-      // Mock Sign Up logic for now as requested
-      setLoading(true);
-      setError(null);
-      setTimeout(() => {
-        setLoading(false);
-        alert('Đăng ký thành công (Mô phỏng)! Hệ thống đã nhận thông tin.');
-        setIsSignUp(false);
-      }, 1000);
-    } else {
-      handleLogin(e);
     }
   };
 

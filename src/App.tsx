@@ -56,6 +56,7 @@ export default function App() {
           
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/record" replace />} />
+            <Route path="/dashboard" element={<Navigate to="/record" replace />} />
             <Route path="/record" element={<Record />} />
             <Route path="/sources" element={<Sources />} />
             <Route path="/tracker" element={<Tracker />} />

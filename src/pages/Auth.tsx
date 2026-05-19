@@ -11,27 +11,44 @@ export function Auth() {
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw new Error('Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
-      
-      const authSession = data.session;
-      if (authSession) {
-        if (authSession.user.user_metadata?.sheet_url) {
-          navigate('/record');
-        } else {
-          navigate('/activation');
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin + '/auth'
+          }
+        });
+        if (error) throw error;
+        
+        alert('Đăng ký thành công! Hãy kiểm tra email của bồ để xác thực tài khoản nếu có, hoặc đăng nhập ngay nhé.');
+        setIsSignUp(false);
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          if (error.message.toLowerCase().includes('email not confirmed')) {
+            throw new Error('Email chưa được xác nhận. Vui lòng kiểm tra hộp thư đến (hoặc thư rác) để xác nhận tài khoản, hoặc tắt "Confirm email" trong cài đặt Supabase.');
+          }
+          throw new Error(error.message === 'Invalid login credentials' ? 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.' : error.message);
+        }
+        
+        const authSession = data.session;
+        if (authSession) {
+          navigate('/dashboard');
         }
       }
     } catch (err: any) {
       setError(err.message || 'Đã có lỗi xảy ra');
+      alert(err.message || 'Đã có lỗi xảy ra');
     } finally {
       setLoading(false);
     }
@@ -77,7 +94,9 @@ export function Auth() {
         <div className="bg-white/[0.07] backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
           {!showForgot ? (
             <>
-              <h2 className="text-xl font-bold text-white mb-6">Đăng nhập</h2>
+              <h2 className="text-xl font-bold text-white mb-6">
+                {isSignUp ? 'Đăng ký tài khoản' : 'Đăng nhập'}
+              </h2>
               
               {error && (
                 <div className="bg-red-500/10 border border-red-500/20 text-red-300 p-4 rounded-xl text-sm flex items-start gap-3 mb-5">
@@ -86,7 +105,7 @@ export function Auth() {
                 </div>
               )}
 
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-blue-300/70 uppercase tracking-wider block">
                     Email
@@ -121,15 +140,17 @@ export function Auth() {
                   </div>
                 </div>
 
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => { setShowForgot(true); setError(null); }}
-                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
-                  >
-                    Quên mật khẩu?
-                  </button>
-                </div>
+                {!isSignUp && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setShowForgot(true); setError(null); }}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
+                    >
+                      Quên mật khẩu?
+                    </button>
+                  </div>
+                )}
 
                 <button
                   type="submit"
@@ -137,14 +158,24 @@ export function Auth() {
                   className="w-full flex items-center justify-center gap-2 py-3.5 mt-2 bg-blue-600 text-white font-bold rounded-xl text-sm uppercase tracking-widest shadow-lg shadow-blue-900/40 hover:bg-blue-500 active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   {loading ? 'ĐANG XỬ LÝ...' : (
-                    <>ĐĂNG NHẬP <ArrowRight className="w-4 h-4" /></>
+                    isSignUp ? (
+                      <>ĐĂNG KÝ <ArrowRight className="w-4 h-4" /></>
+                    ) : (
+                      <>ĐĂNG NHẬP <ArrowRight className="w-4 h-4" /></>
+                    )
                   )}
                 </button>
               </form>
 
-              <p className="text-center text-xs text-white/30 mt-6">
-                Chưa có tài khoản? Liên hệ quản trị viên để được cấp quyền truy cập.
-              </p>
+              <div className="text-center mt-6 text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setIsSignUp(!isSignUp); setError(null); }}
+                  className="text-blue-400 hover:text-blue-300 font-bold transition-colors"
+                >
+                  {isSignUp ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký tài khoản'}
+                </button>
+              </div>
             </>
           ) : (
             <>
