@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# internal docs
+WiseSpend_PRD_*
+*PRD*
+
+# Temp files from setup
+repo.zip
+repo_extracted/
+extracted_docx/
+prd_text.txt
+prd_utf8.txt
+
+# Secrets & Credentials
+.env.secrets
+feisty-mason-*.json

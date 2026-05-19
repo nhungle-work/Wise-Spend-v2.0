@@ -1,0 +1,426 @@
+﻿WiseSpend
+Ghi ít · Hiểu nhiều · Sống chủ động
+Your Data, Your Ownership — Google Sheets as Backend
+PRD v9.0
+Tháng 5, 2026PC-first Web App
+Google Sheets = Sole BackendPrivacy First
+App không lưu dữ liệu user
+
+1. Overview & Goals
+Problem Statement
+Hồng, một nhân viên văn phòng độc thân đang cố xây dựng thói quen quản lý tài chính cá nhân, cần một cách để ghi chép chi tiêu với ít effort nhất có thể nhưng vẫn nhận lại được bức tranh tài chính có ý nghĩa, vì cô ấy sẵn sàng bỏ công ghi chép — nhưng khi dữ liệu không tự phản ánh lại tình hình của mình, cô không biết mình đang đứng ở đâu và mất động lực trước khi thói quen kịp hình thành.
+Core Value: "Your Data, Your Ownership"
+WiseSpend KHÔNG lưu trữ dữ liệu tài chính của user trên server. Toàn bộ giao dịch, số dư, kế hoạch ngân sách sống trong Google Sheet cá nhân của chính user — user là người duy nhất có toàn quyền kiểm soát. App chỉ đóng vai trò là giao diện ghi chép và hiển thị dashboard.
+Architecture Overview
+LớpCông nghệVai tròLưu data user?Mặt tiềnWeb App (Next.js)Ghi chép, hiển thị dashboard, tính toánKHÔNG — chỉ render UIBackend dữ liệuGoogle Sheet của từng userLưu trữ duy nhất mọi giao dịch & số liệuCÓ — thuộc sở hữu userCầu nốiSupabase Edge Functions + Google Sheets APIĐọc/ghi vào Sheet theo yêu cầu của web appKhông cache, không lưu lạiAuth onlySupabase AuthChỉ lưu email + password hash + sheet_url của userChỉ thông tin tài khoản, không có giao dịch
+Product Goals
+#Mục tiêuChỉ số1Ghi chép 1 khoản chi tiêu trong dưới 30 giâyTime-on-task đo qua session analytics2Ghi và đọc từ Google Sheets trong dưới 3 giâyAPI response time monitoring3User thấy insight ngay sau lần ghi đầu tiên trong ngày% session xem dashboard sau ghi chép ≥ 70%4D7 Retention ≥ 40%Cohort analytics5% user mở Monthly Tracker ≥ 1 lần/tuần ≥ 60%Event tracking
+Target Users — Primary Persona: Hồng
+• Vai trò: Nhân viên văn phòng, 22–30 tuổi, thu nhập 10–15 triệu/tháng, độc thân
+• Technical comfort: Dùng được Google Sheets cơ bản, quen web app, không biết công thức phức tạp
+• Context sử dụng: Buổi tối trên laptop sau giờ làm, 5–10 phút/ngày
+• Động lực: Muốn kiểm soát tài chính nhưng bỏ cuộc vì ghi xong không biết data nói gì
+
+Scope & Non-Scope
+In Scope — MVP
+• Web App: Activation flow, Onboarding, Nguồn tiền, Quick Entry (5 loại), Monthly Tracker, Finance Overview
+• Google Sheets: Template chuẩn của WiseSpend, user tự copy vào Drive → share quyền Editor cho bot → paste URL vào app
+• Supabase Edge Functions: Đọc/ghi Sheets API theo request, không cache dữ liệu
+• Auth: Email + password (Supabase Auth). Chỉ lưu thông tin tài khoản và sheet_url
+• Micro-feedback sau mỗi lần ghi chép
+• Finance Overview đầy đủ với công thức tự động
+Out of Scope
+• Landing page, lead magnet, flow thanh toán — PO tự xử lý bên ngoài
+• Tự đăng ký tài khoản — PO whitelist email thủ công trong Supabase
+• Lưu trữ dữ liệu giao dịch trên server của WiseSpend — không bao giờ
+• Mobile app — V3 sau khi web app đã validate
+• Kết nối ngân hàng tự động (open banking) — V3
+• Multi-user / chia sẻ ngân sách — ngoài phạm vi persona
+
+Success Metrics
+MetricTargetLoạiCách đoThời gian ghi 1 khoản< 30 giâyLeadingSession time-on-taskSheets read/write latency< 3 giâyLeadingAPI response time% session xem dashboard sau ghi≥ 70%LeadingEvent tracking% user mở Monthly Tracker ≥ 1 lần/tuần≥ 60%LeadingEvent trackingD7 Retention≥ 40%LaggingCohort D730-day Retention≥ 25%LaggingCohort D30NPS (sau 30 ngày)≥ 35LaggingIn-app survey
+
+2. User Stories
+Thứ tự stories = thứ tự hành trình user: Story 1 (kích hoạt tài khoản) → Story 2 (kết nối Sheet — BẮT BUỘC trước khi vào app) → Story 3 (onboarding) → Story 4–7 (sử dụng hàng ngày).
+Story 1: Tạo tài khoản & Đăng nhập
+Thành phầnChi tiếtUser RoleHồng — vừa nhận email kích hoạt từ PO, lần đầu truy cập WiseSpendGoalTạo password cá nhân, đăng nhập thành công và được chuyển sang bước kết nối Sheet
+Bối cảnh
+PO whitelist email của user trong Supabase. User nhận email thông báo kèm link kích hoạt. Không có flow tự đăng ký.
+
+User Flow — Lần đầu (kích hoạt tài khoản)
+1. Hồng nhận email: "Tài khoản WiseSpend của bạn đã được tạo. Nhấn vào đây để thiết lập mật khẩu."
+2. Hồng click link → trang tạo mật khẩu: nhập password → xác nhận → nhấn "Kích hoạt tài khoản".
+3. Kích hoạt thành công → app tự đăng nhập → chuyển thẳng sang Story 2 (Activation — kết nối Sheet).
+
+User Flow — Đăng nhập lại (các lần sau)
+4. Hồng vào URL WiseSpend → màn hình đăng nhập: email + password + "Đăng nhập".
+5. Đăng nhập thành công → vào thẳng màn hình Ghi chép (nếu đã hoàn thành Activation).
+
+Acceptance Criteria
+• Không có nút "Đăng ký" — chỉ email được PO whitelist mới nhận được link kích hoạt.
+• Link kích hoạt có hiệu lực trong 72 giờ. Hết hạn → user yêu cầu PO gửi lại.
+• User tự đặt và thay đổi password bất kỳ lúc nào trong tab Bảo mật.
+• Đăng nhập thành công trong < 2 giây.
+• Sai email hoặc password → hiện lỗi chung, không tiết lộ cái nào sai.
+• Có link "Quên mật khẩu" → gửi email reset về địa chỉ đã đăng ký.
+• Persistent session 30 ngày.
+• Nếu user chưa hoàn thành Activation (Story 2) → luôn redirect về màn hình Activation, không cho vào Dashboard.
+
+Story 2: Kích hoạt Cơ sở dữ liệu (Activation) — BẮT BUỘC
+Thành phầnChi tiếtUser RoleHồng — vừa kích hoạt tài khoản, cần thiết lập nơi lưu trữ dữ liệu cá nhân trước khi dùng appGoalTạo Google Sheet cá nhân từ template của WiseSpend, cấp quyền cho bot của app, và kết nối Sheet đó vào tài khoản WiseSpend
+Bối cảnh — Tại sao cần bước này?
+WiseSpend không lưu dữ liệu tài chính của bạn trên server. Thay vào đó, toàn bộ giao dịch sẽ được lưu trực tiếp vào Google Sheet cá nhân của bạn — bạn là người duy nhất có toàn quyền kiểm soát dữ liệu của mình.
+User Flow — 3 bước Activation
+Bước 1: Khởi tạo Cơ sở dữ liệu cá nhân
+6. App hiển thị nút "Tạo Sheet cá nhân của tôi".
+7. Hồng click → app mở link Google Sheets template chuẩn của WiseSpend trong tab mới.
+8. Hồng click "Make a copy" (Tạo bản sao) → chọn vị trí lưu trong Google Drive của mình → xác nhận.
+9. Sheet mới được tạo trong Drive của Hồng với đầy đủ cấu trúc tab và công thức sẵn có.
+
+Bước 2: Cấp quyền đồng bộ cho WiseSpend
+10. App hướng dẫn: "Mở file Sheet vừa copy → click nút Chia sẻ (Share) → nhập email bot: wisespend-bot@wisespend.iam.gserviceaccount.com → chọn quyền Người chỉnh sửa (Editor) → Gửi."
+11. App hiển thị email bot rõ ràng, có nút Copy để Hồng dễ copy.
+12. App hiển thị ảnh hướng dẫn từng bước (hoặc GIF ngắn) để giảm friction.
+Lưu ý bảo mật: Giữ file Sheet này riêng tư và cẩn trọng khi chia sẻ, vì đây là nơi lưu trữ duy nhất dữ liệu tài chính của bạn. WiseSpend chỉ dùng quyền Editor để ghi dữ liệu — không bao giờ xóa hay chia sẻ file của bạn.
+Bước 3: Hoàn tất Kết nối
+13. App hướng dẫn: "Copy URL của file Sheet vừa tạo và dán vào ô bên dưới."
+14. Hồng paste URL → nhấn "Kết nối".
+15. App gọi Sheets API để verify: kiểm tra URL hợp lệ + bot có quyền Editor không.
+16. Nếu verify thành công → lưu sheet_url vào Supabase Auth profile → chuyển sang Story 3 (Onboarding).
+17. Nếu verify thất bại → hiện thông báo lỗi cụ thể (URL sai định dạng / Bot chưa được cấp quyền) + hướng dẫn khắc phục.
+
+Acceptance Criteria
+• App có ProtectedRoute/Layout check: user chưa hoàn thành Activation → LUÔN redirect về màn hình này, không cho vào bất kỳ màn hình nào khác.
+• Email bot được hiển thị rõ ràng, có nút "Copy email" 1 click.
+• Bước verify URL: gọi Sheets API để kiểm tra quyền Editor trong < 5 giây.
+• Lỗi verify phải mô tả cụ thể để user biết cần làm gì (không hiện lỗi kỹ thuật).
+• sheet_url được lưu vào profile Supabase Auth của user — đây là thông tin tài khoản, không phải dữ liệu tài chính.
+• Sau khi kết nối thành công, mọi giao dịch đọc/ghi đều đi thẳng vào Sheet này. WiseSpend không giữ bản sao.
+• User có thể đổi Sheet (kết nối Sheet khác) bất kỳ lúc nào trong tab Bảo mật — nhưng phải xác nhận rõ vì dữ liệu cũ ở Sheet trước không tự migrate.
+
+Story 3: Onboarding — Thiết lập ban đầu
+Thành phầnChi tiếtUser RoleHồng — vừa kết nối Sheet thành công, cần thiết lập thông tin cơ bản trước khi dùng appGoalThiết lập chu kỳ tháng, nguồn tiền, kế hoạch ngân sách (nếu muốn) — xong là dùng được ngay
+User Flow
+18. App hiện màn hình chào: "Xin chào Hồng! Hãy thiết lập vài thứ để bắt đầu." — 3 bước ngắn.
+19. [Bước 1 — Chu kỳ tháng] App hỏi: "Bạn muốn tính tháng bắt đầu từ ngày mấy?" → Hồng chọn ngày (1–31). App gợi ý 3 chu kỳ thực tế để Hồng confirm.
+20. [Bước 2 — Nguồn tiền] App dẫn Hồng khai báo số dư ban đầu cho từng nguồn tiền (xem Story 4).
+21. [Bước 3 — Kế hoạch ngân sách] App hỏi có muốn lập kế hoạch chi tiêu tháng ngay không:
+◦ Lựa chọn A "Lập kế hoạch ngay": dẫn sang Story 5 (Budget Planning). Monthly Tracker show đầy đủ Budget + Actual + Ngân sách còn lại.
+◦ Lựa chọn B "Làm sau": bỏ qua. Monthly Tracker chỉ show Actual + %. Có thể lập sau trong Monthly Tracker.
+22. Onboarding hoàn tất → vào màn hình Ghi chép.
+
+Acceptance Criteria
+• Toàn bộ onboarding ≤ 3 bước, không bắt buộc điền quá nhiều thông tin.
+• User có thể bỏ qua bước 2 và 3 để vào app ngay — quay lại setup sau trong Cài đặt.
+• Chu kỳ tháng tính đúng theo ngày thực tế — app dùng ngày hệ thống để generate 3 lựa chọn.
+• Mọi thiết lập trong Onboarding có thể thay đổi bất kỳ lúc nào sau đó.
+
+Story 4: Quản lý nguồn tiền
+Thành phầnChi tiếtUser RoleHồng — muốn khai báo và cập nhật số tiền đang có tại các tài khoản, ví, tiền mặtGoalCó cái nhìn tổng quan về tiền đang có ở đâu, bao nhiêu — cập nhật lại bất kỳ lúc nào
+Bối cảnh — Wallet Hybrid Model
+Số dư từng nguồn tự cộng/trừ real-time theo giao dịch THU/CHI. Khi user chủ động cập nhật lại số dư = con số mới đó trở thành "mốc reset" — giao dịch sau đó tính từ mốc mới. Không tự reset theo chu kỳ tháng hay bất kỳ lịch trình nào.
+User Flow
+23. Hồng vào tab Nguồn tiền (hoặc được dẫn từ Onboarding).
+24. App hiển thị 4 nhóm: Tài khoản ngân hàng / Ví điện tử / Tiền mặt / Thẻ tín dụng.
+25. Thêm nguồn tiền (nhóm 1–3 — loại sở hữu): chọn loại → chọn tên hoặc tự điền → nhập số dư hiện tại → lưu. App hiển thị dòng nhỏ mờ: "Cập nhật vào ngày [ngày lưu]".
+26. Thêm thẻ tín dụng (nhóm 4): chọn ngân hàng → đặt tên thẻ → lưu. Không nhập số dư — dư nợ tính từ giao dịch CHI bằng thẻ.
+27. Khi cập nhật lại số dư 1 nguồn: app hiện xác nhận "Số dư [Tên nguồn] sẽ được đặt lại thành [số mới]. Các giao dịch trước đó sẽ không ảnh hưởng con số này nữa." → xác nhận → ghi vào Sheet.
+
+Wording hướng dẫn trong app
+💡 Số dư của bạn sẽ tự cập nhật sau mỗi lần ghi thu/chi. Nếu số liệu bị sai hoặc có phát sinh ngoài app (lãi suất, chuyển khoản nội bộ...), bạn có thể cập nhật lại số dư bất kỳ lúc nào — con số bạn nhập sẽ là mốc mới để tính từ đó trở đi.
+▸ Tài khoản ngân hàng (cộng vào Số dư hiện tại)
+• Vietcombank, VietinBank, BIDV, Agribank, MB Bank, Techcombank, VPBank, ACB, TPBank, Sacombank, HDBank, SeABank, OCB, MSB, VIB, SHB, LienVietPostBank, Nam A Bank, Bac A Bank, Eximbank, NCB, BaoVietBank, Kienlongbank, PGBank, Viet Capital Bank, Cake by VPBank, Timo, HSBC Vietnam, Standard Chartered Vietnam, "Khác" (tự điền)
+▸ Ví điện tử (cộng vào Số dư hiện tại)
+• ZaloPay, MoMo, Apple Pay, Viettel Money, "Khác" (tự điền)
+▸ Tiền mặt (cộng vào Số dư hiện tại)
+• Mặc định 1 ví "Tiền mặt". User có thể đổi tên hoặc tạo thêm.
+▸ Thẻ tín dụng (KHÔNG cộng vào Số dư hiện tại)
+• Dùng chung danh sách ngân hàng ở trên. User tự đặt tên thẻ. Dư nợ chỉ hiển thị trong nhóm Nợ ở Finance Overview.
+
+Acceptance Criteria
+• User có thể tạo không giới hạn số nguồn tiền, đặt tên tự do.
+• Số dư tự cộng/trừ theo THU/CHI. Khi cập nhật thủ công = reset mốc. Yêu cầu xác nhận.
+• Dòng "Cập nhật vào ngày [date]" chỉ đổi khi user chỉnh tay — không đổi theo giao dịch.
+• Số dư tổng = SUM(tất cả nguồn loại sở hữu). Không tính thẻ tín dụng.
+• Xóa nguồn tiền: hiện cảnh báo xác nhận.
+• Mọi thay đổi nguồn tiền ghi thẳng vào tab "Wallets" trong Google Sheet của user.
+
+Story 5: Lập kế hoạch ngân sách tháng (Budget Planning)
+Thành phầnChi tiếtUser RoleHồng — muốn đặt ngân sách dự chi cho từng danh mục trong thángGoalSetup kế hoạch chi tiêu tháng nhanh, dữ liệu tự đồng bộ vào Monthly Tracker
+User Flow
+28. Hồng vào Monthly Tracker → chế độ PLAN (hoặc được dẫn từ Onboarding bước 3A).
+29. App hiển thị lưu ý:
+◦ "Kế hoạch chi tiêu tháng sẽ là cơ sở để tính tiến độ chi tiêu của bạn trong tháng."
+◦ "Gợi ý: Tổng ngân sách chi tiêu nên nhỏ hơn hoặc bằng thu nhập hàng tháng của bạn."
+30. Hồng điền ngân sách dự chi cho từng danh mục. App hiển thị real-time: "Tổng đã lên kế hoạch: X₫".
+31. Lưu → Monthly Tracker tự đồng bộ cột Budget. Dữ liệu ghi vào tab "Monthly" trong Sheet.
+
+Acceptance Criteria
+• Danh mục mặc định: Ăn uống, Di chuyển, Nhà ở, Mua sắm, Giải trí, Sức khỏe, Giáo dục, Phát sinh, Khác.
+• User có thể thêm danh mục tùy chỉnh.
+• App KHÔNG yêu cầu nhập thu nhập. Không có ô "Thu nhập".
+• Chỉ hiển thị "Tổng đã lên kế hoạch: X₫".
+• Danh mục kế hoạch tự xuất hiện trong dropdown danh mục CHI.
+
+Story 6: Ghi chép giao dịch hàng ngày
+Thành phầnChi tiếtUser RoleHồng — vừa phát sinh giao dịch, muốn ghi lại nhanh và đúng loạiGoalGhi chép đầy đủ trong < 30 giây, data tự ghi vào Sheet và phản ánh ngay lên dashboard
+Giao diện form
+1 form duy nhất với 5 tab: THU | CHI | TIẾT KIỆM | ĐẦU TƯ | CHO VAY / VAY NỢ. Mặc định tab CHI. Chuyển tab không làm mất dữ liệu đang điền. Trường Ngày mặc định = hôm nay, có thể backdate qua calendar picker.
+
+Chi tiết từng loại giao dịch
+TabTrường bắt buộcTrường tùy chọnTác động số dưTHUSố tiền, Danh mục thu, NgàyGhi chúCộng vào Số dư hiện tại tổngCHISố tiền, Danh mục chi, NgàyTick "Trả bằng thẻ tín dụng" + chọn thẻ, Trả hộ cho người khác (số tiền), Ghi chúTrừ khỏi Số dư. Nếu dùng thẻ tín dụng: không trừ số dư → cộng Dư nợ thẻ. Phần trả hộ → cộng ReceivablesTIẾT KIỆMSố tiền, Ngày gửi (calendar, mặc định hôm nay)Kỳ hạn (dropdown → app tự tính ngày đáo hạn gợi ý), Ngày đáo hạn (calendar, chỉnh được), Nơi gửi (tự gõ tên tự do), Ghi chúTrừ khỏi Số dư. Cộng vào Saving Total. KHÔNG tính vào Monthly TrackerĐẦU TƯSố tiền, Loại đầu tư, NgàyGhi chúTrừ khỏi Số dư. Cộng vào Tài sản đầu tư. KHÔNG tính vào Monthly TrackerCHO VAYSố tiền, Tên người nợ, NgàyNgày dự kiến trả, Ghi chúTrừ khỏi Số dư. Cộng vào ReceivablesVAY NỢSố tiền, Tên người cho vay, NgàyNgày dự kiến trả, Ghi chúCộng vào Số dư. Cộng vào Nợ người khác
+Luồng đặc biệt: CHI bằng thẻ tín dụng
+32. Hồng chọn tab CHI → tick "Trả bằng thẻ tín dụng" → chọn thẻ nào.
+33. App hỏi thêm: "Có trả hộ cho người khác không?" → nếu có, điền số tiền trả hộ.
+34. Hệ thống: Tổng CHI → cộng Dư nợ thẻ được chọn. Phần trả hộ → cộng Receivables. Số dư KHÔNG thay đổi.
+35. Dư nợ tổng hợp theo từng thẻ hiển thị trong Finance Overview → nhóm Nợ.
+
+Acceptance Criteria
+• Ghi chép hoàn thành trong < 30 giây (keyboard-first, không cần chuột).
+• Sau khi lưu: ghi thẳng vào tab "Transactions" trong Sheet → hiện micro-feedback tức thì.
+• Micro-feedback: "✓ 85.000₫ — Ăn uống. Tháng này đã chi X% ngân sách mục này." (nếu có kế hoạch) hoặc chỉ hiện tổng đã chi (nếu chưa có kế hoạch).
+• Icon "✓ Đã lưu vào Sheet" hiện khi ghi thành công. Icon lỗi khi ghi thất bại.
+• Cho phép sửa/xóa giao dịch đã lưu — cập nhật thẳng vào Sheet, dashboard tự điều chỉnh.
+• Monthly Tracker và Finance Overview tự cập nhật real-time sau mỗi giao dịch.
+
+Story 7: Monthly Tracker — Theo dõi & Lập kế hoạch
+Thành phầnChi tiếtUser RoleHồng — muốn xem chi tiêu tháng này và điều chỉnh kế hoạch ngân sách ngay khi cầnGoalVừa thấy được thực trạng chi tiêu, vừa có thể chỉnh kế hoạch ngay tại chỗ
+2 chế độ TRACK / PLAN
+TRACK (mặc định): Bảng thống kê tự động — không edit được. PLAN: Cột Budget trở thành editable. Lưu xong tự quay về TRACK. Hai chế độ không bao giờ hiển thị cùng lúc — tránh user bị confused.
+User Flow — Chế độ TRACK
+36. Hồng vào Monthly Tracker — thấy bảng tháng hiện tại.
+37. Góc trên phải: (1) Dropdown chọn tháng xem lịch sử, (2) Nút "Chỉnh kế hoạch".
+38. Chế độ A (chưa có kế hoạch): Danh mục | Tuần 1 | Tuần 2 | Tuần 3 | Tuần 4 | Tổng | % Tổng.
+39. Chế độ B (đã có kế hoạch): Danh mục | Budget | Tuần 1 | Tuần 2 | Tuần 3 | Tuần 4 | Tổng (*) | % Tổng | Giữ lại, chi tiêu sau | Ngân sách còn lại.
+40. Biểu đồ tròn: % từng danh mục, hover xem số tiền tuyệt đối.
+41. Cuối bảng: ô Reflection tùy chọn (KEEP / STOP / START) — hiện lại dạng reminder lần sau.
+
+User Flow — Chế độ PLAN
+42. Click "Chỉnh kế hoạch" → cột Budget editable (highlight nhẹ). Các cột actual vẫn hiển thị để tham khảo.
+43. Hồng điền/sửa ngân sách. App hiện real-time: "Tổng kế hoạch: X₫".
+44. Click "Lưu kế hoạch" → về TRACK. Dữ liệu ghi vào tab "Monthly" trong Sheet.
+45. Nút "Cài đặt chu kỳ tháng" (nhỏ, góc màn hình) → popup thay đổi chu kỳ.
+
+Quy tắc chỉnh sửa
+• TRACK: không có ô nào editable. Cột "Giữ lại, chi tiêu sau" edit được trong TRACK (ghi chú ý định, không ảnh hưởng số liệu tự động).
+• PLAN: chỉ cột Budget editable.
+• Lịch sử tháng trước: chỉ xem, không edit.
+
+Cấu trúc cột bảng — Chế độ B
+CộtTênCông thức / NguồnAi điền?ADanh mụcTừ kế hoạch tháng + danh mục thực tế phát sinhTự độngBBudgetĐọc từ tab "Monthly" trong SheetUser (chế độ PLAN)CTuần 1SUM(CHI) trong ngày 1–7 chu kỳ — đọc từ tab "Transactions"Tự độngDTuần 2SUM(CHI) ngày 8–14Tự độngETuần 3SUM(CHI) ngày 15–21Tự độngFTuần 4SUM(CHI) ngày 22–cuối chu kỳTự độngGTổng (*)C + D + E + FTự độngH% TổngG / SUM(G tất cả danh mục) × 100Tự độngIGiữ lại, chi tiêu sauUser điền thủ công (ghi vào Sheet)User (chế độ TRACK)JNgân sách còn lạiB − G − ITự động
+Acceptance Criteria
+• Dropdown chọn tháng: tháng hiện tại + tất cả tháng trước có giao dịch.
+• Bảng tự cập nhật khi có giao dịch CHI mới — đọc lại từ Sheet.
+• Chỉ tính giao dịch loại CHI — TIẾT KIỆM, ĐẦU TƯ, CHO VAY, VAY NỢ không xuất hiện.
+• CHI bằng thẻ tín dụng vẫn tính vào Monthly Tracker.
+• Ngân sách còn lại = B − G − I. Xanh nếu ≥ 0, đỏ nếu < 0.
+• Toàn bộ bảng trong 1 viewport trên 1366×768. Design target 1920×1080.
+
+Story 7B: Theo dõi tiết kiệm, nợ & Quản lý đầu tư
+Thành phầnChi tiếtUser RoleHồng — muốn xem và cập nhật trạng thái các khoản tiết kiệm, nợ và đầu tư đang cóGoalBiết ngay đang có bao nhiêu tiết kiệm, ai nợ mình, mình nợ ai, đầu tư gì — và cập nhật khi có thay đổi
+Vị trí trong app
+Màn hình Ghi chép có 2 phần: • Phần trên: Quick Entry Form (5 tab) • Phần dưới (collapsible, mặc định thu gọn): "Theo dõi tiết kiệm, nợ & Đầu tư" — 3 sub-section: TIẾT KIỆM / NỢ / ĐẦU TƯ Badge header: "2 tiết kiệm · 3 nợ · 1 đầu tư". Dữ liệu đọc từ tab "Transactions" trong Sheet.
+User Flow — Tiết kiệm
+46. Click sub-section TIẾT KIỆM → danh sách khoản active: nơi gửi, số tiền, ngày gửi, kỳ hạn, ngày đáo hạn.
+47. Khoản đáo hạn trong 7 ngày → highlight màu vàng.
+48. Click 1 khoản → popup: (1) Đánh dấu đã rút/đáo hạn — nhập tiền thực nhận về → tạo giao dịch THU tự động, ghi vào Sheet. (2) Chỉnh sửa thông tin.
+
+User Flow — Nợ
+49. Click sub-section NỢ → 2 nhóm: Receivables (người nợ mình) / Nợ người khác.
+50. Click 1 khoản → popup: Đánh dấu đã trả/thu hoặc Chỉnh sửa.
+
+User Flow — Đầu tư
+51. Click sub-section ĐẦU TƯ → danh sách khoản active: loại, số tiền, ngày.
+52. Click 1 khoản → popup: Đánh dấu đã bán (nhập tiền thu về → tạo THU tự động) hoặc Chỉnh sửa.
+
+Logic kỳ hạn tiết kiệm
+Kỳ hạn chọnNgày đáo hạn gợi ýGhi chú1 / 2 / 3 / 6 / 9 / 12 / 18 / 24 / 36 thángNgày gửi + số tháng tương ứngHiện ngay khi chọn kỳ hạn, không cần submitKhác (tự nhập số tháng)Ngày gửi + số tháng user nhậpKhông kỳ hạn(Để trống)
+Ngày đáo hạn: luôn là calendar picker — không gõ tay. User có thể chỉnh lại nếu ngày gợi ý rơi vào ngày lễ/nghỉ.
+Ngày gửi: calendar picker, mặc định hôm nay, có thể backdate.
+
+Acceptance Criteria
+• Badge đúng số khoản active. Dữ liệu đọc từ Sheet.
+• Khi chọn kỳ hạn → ngày đáo hạn gợi ý hiện ngay lập tức.
+• Khoản đáo hạn trong 7 ngày → highlight vàng.
+• Khi mark đáo hạn: bắt buộc nhập số tiền thực nhận về.
+• Khi đáo hạn/bán đầu tư: giao dịch THU tự tạo và ghi vào Sheet.
+• "Đã tất toán" ẩn mặc định, click "Xem lịch sử" để hiện.
+• Saving Total trong Finance Overview chỉ tính khoản saving_status = "active".
+
+Story 8: Finance Overview
+Thành phầnChi tiếtUser RoleHồng — muốn xem bức tranh tài chính tổng thểGoalHiểu trong 10 giây: đang có bao nhiêu, nợ bao nhiêu, tài sản ròng bao nhiêu, tiến tới mục tiêu đến đâu
+Các chỉ số — tất cả đọc từ Google Sheet và tính real-time
+NhómChỉ sốNguồn tínhSố dưSố dư tổng (expand → từng nguồn)Tab Wallets + TransactionsThu & ChiThu nhập năm / Tổng chi phí năm / Chi phí TB tháng / Savings Rate %Tab TransactionsTài sảnSaving Total (tiết kiệm đang active)Tab Transactions (saving_status=active)Tài sản đầu tư (breakdown theo loại, chỉ khoản active)Tab Transactions (invest_status=active)Tổng tài sản / Net Worth (có icon ? giải thích)Tính từ Số dư + Tài sản − Tổng nợMục tiêuTarget (user tự đặt) / Goal Progress BarTab OverviewNợTổng nợ (expand → Dư nợ từng thẻ tín dụng + Nợ người khác)Tab TransactionsReceivablesTiền người khác nợ mìnhTab Transactions
+Acceptance Criteria
+• Tất cả chỉ số đọc từ Google Sheet — app không cache, không lưu lại.
+• Click "Net Worth" → popup: "Tài sản ròng = Tổng tài sản − Tổng nợ."
+• Số dư tổng và Tổng nợ expand/collapse. Dư nợ tín dụng breakdown theo từng thẻ.
+• Tài sản đầu tư chỉ tính khoản chưa bán/tất toán.
+• Tất cả chỉ số trong 1 viewport không cần scroll trên 1080p.
+• Nếu thiếu data → placeholder gợi ý hành động, không hiện số 0.
+Story 9: Bảo mật — Màn hình Security.tsx (CẦN BUILD)
+Thành phầnChi tiếtUser RoleHồng — muốn đổi mật khẩu hoặc đổi kết nối Google Sheet khi cầnGoalQuản lý thông tin tài khoản và kết nối Sheet trong 1 màn hình rõ ràng, an toànTrạng thái hiện tạiRoute /security đã có trong Sidebar.tsx nhưng chưa có component Security.tsx → màn hình trắng khi click
+Bối cảnh từ codebase
+Sidebar.tsx đã định nghĩa route /security với icon Shield. Auth.tsx đã có flow đổi mật khẩu qua email (forgot password). Activation.tsx đã có flow kết nối Sheet. Security.tsx cần tái sử dụng logic từ 2 file này — không build lại từ đầu.
+Cấu trúc màn hình Security.tsx — 2 section
+
+Section 1: Đổi mật khẩu
+53. Hồng vào tab Bảo mật → thấy Section "Mật khẩu".
+54. Hiển thị: email hiện tại (read-only, lấy từ Supabase session), nút "Đổi mật khẩu".
+55. Hồng click "Đổi mật khẩu" → form inline xuất hiện với 3 trường: Mật khẩu hiện tại, Mật khẩu mới, Xác nhận mật khẩu mới.
+56. Hồng điền đủ → nhấn "Lưu" → app gọi supabase.auth.updateUser({ password: newPassword }).
+57. Thành công → hiện toast "Đã cập nhật mật khẩu" → form ẩn đi. Thất bại → hiện lỗi inline rõ ràng.
+
+Section 2: Kết nối Google Sheet
+58. Hiển thị: Sheet đang kết nối (link hoặc ID rút gọn từ user_metadata.sheet_url), trạng thái kết nối (xanh = đang hoạt động), nút "Đổi Sheet".
+59. Hồng click "Đổi Sheet" → hiện warning rõ ràng: "Đổi Sheet đồng nghĩa dữ liệu cũ ở Sheet trước sẽ không còn hiển thị trong app. Dữ liệu vẫn còn trong Google Drive của bạn."
+60. Hồng xác nhận → hiện lại form 3 bước Activation (tái sử dụng component/logic từ Activation.tsx): Tạo Sheet mới → Share quyền → Paste URL mới.
+61. Paste URL mới → app verify → lưu sheet_url mới vào user_metadata → hiện toast "Đã cập nhật Sheet".
+
+UI Layout gợi ý
+ElementChi tiếtTham chiếu codeContainerWhite card, rounded-3xl, padding 8–10, max-w-2xl, căn giữa hoặc left-aligned — đồng bộ style Activation.tsxActivation.tsx line 70–72Email hiển thịText nhỏ, màu slate-500, read-only. Lấy từ session.user.emailAuth.tsx: supabase.auth.getSession()Form đổi mật khẩu3 input type="password", validate: mật khẩu mới ≥ 8 ký tự, xác nhận phải khớp. Nút Lưu disabled khi chưa điền đủStyle từ Auth.tsx input classesSheet status badgeXanh lá nếu sheet_url có trong user_metadata. Đỏ nếu không có (chưa kết nối)Activation.tsx: user_metadata?.sheet_urlWarning trước khi đổi SheetModal hoặc inline warning với màu warning (#F59E0B), yêu cầu confirm bằng nút riêngNew componentToast notificationThành công: xanh lá. Thất bại: đỏ. Auto-dismiss sau 3 giâyTạo mới hoặc dùng thư viện có sẵn
+Acceptance Criteria
+• Security.tsx được tạo tại đúng route /security — không còn màn hình trắng khi click Bảo mật trong Sidebar.
+• Section đổi mật khẩu: validate mật khẩu mới ≥ 8 ký tự + xác nhận phải khớp trước khi cho submit.
+• Đổi mật khẩu thành công → toast xanh "Đã cập nhật mật khẩu". Sai mật khẩu hiện tại → lỗi inline.
+• Section kết nối Sheet: hiển thị đúng URL/ID Sheet đang dùng (rút gọn, không hiện full URL).
+• Trước khi đổi Sheet: bắt buộc hiện warning về việc mất kết nối dữ liệu cũ. Không cho đổi mà không confirm.
+• Flow đổi Sheet tái sử dụng logic từ Activation.tsx (3 bước) — không viết lại từ đầu.
+• Sau khi đổi Sheet thành công: cập nhật user_metadata.sheet_url trong Supabase Auth, hiện toast xác nhận.
+• Style đồng nhất với các màn hình hiện có: glassmorphism/white card, màu blue-600 primary, font classes từ Tailwind.
+• Đăng xuất: nút đăng xuất vẫn nằm ở Sidebar (đã có) — không cần thêm vào Security.tsx.
+
+File cần tạo / chỉnh sửa
+FileActionNội dungSecurity.tsxTẠO MỚIComponent chính cho route /security. Import supabase từ ../lib/supabase. 2 section: đổi mật khẩu + kết nối Sheet.src/App.tsx hoặc router fileCHỈNH SỬAThêm route <Route path="/security" element={<Security />} /> nếu chưa có.Activation.tsxKHÔNG ĐỔIChỉ tái sử dụng logic/style, không sửa file gốc.
+
+
+3. Functional Requirements
+3A. Feature Breakdown
+FeatureMô tảPriorityDependenciesKích hoạt tài khoảnPO whitelist email trong Supabase. User nhận link kích hoạt, tự tạo password.Must-haveKhôngĐăng nhập / Quên mật khẩuEmail + password. Reset qua email. Persistent session 30 ngày.Must-haveKích hoạt tài khoảnActivation — Kết nối SheetUser copy template Sheet → share quyền Editor cho bot → paste URL → app verify. ProtectedRoute chặn vào Dashboard nếu chưa hoàn thành.Must-haveĐăng nhậpOnboardingChu kỳ tháng → Nguồn tiền → Kế hoạch (optional). 3 bước, có thể skip.Must-haveActivationTab Nguồn tiềnThêm/sửa nguồn tiền. Hybrid model: balance tự cộng/trừ theo giao dịch, reset mốc khi user cập nhật thủ công. Ghi vào tab "Wallets" trong Sheet.Must-haveOnboardingQuick Entry Form5 tab: THU, CHI (thẻ tín dụng + trả hộ), TIẾT KIỆM (kỳ hạn + đáo hạn + nơi gửi), ĐẦU TƯ, CHO VAY/VAY NỢ. Keyboard-first. Ghi thẳng vào tab "Transactions" trong Sheet.Must-haveNguồn tiềnMicro-feedbackHiện ngay sau khi ghi: insight chi tiêu + trạng thái ghi Sheet (✓ / lỗi).Must-haveQuick Entry FormTheo dõi tiết kiệm, nợ & Đầu tưSection collapsible 3 sub-section. Mark đã rút/tất toán → tạo THU tự động. Đọc từ Sheet.Must-haveQuick Entry FormMonthly Tracker (2 chế độ TRACK/PLAN)TRACK: bảng tự động. PLAN: chỉnh Budget. Chọn tháng xem lịch sử. Dữ liệu đọc từ Sheet.Must-haveQuick Entry FormFinance OverviewDashboard tổng quan — tất cả đọc từ Sheet, tính real-time.Must-haveTất cả features trênReflection NoteÔ ghi chú cuối Monthly Tracker. Hiện lại như reminder.Should-haveMonthly TrackerAuto-categorizationGợi ý danh mục dựa trên keyword (rule-based).Should-haveQuick Entry FormTab Bảo mật (Security.tsx)Đổi mật khẩu (supabase.auth.updateUser) + Xem/đổi kết nối Sheet (tái sử dụng Activation flow). Route /security đã có trong Sidebar, cần tạo component.Must-haveAuth + Activation
+3B. Công thức tính — Finance Overview
+Tất cả công thức tính bằng cách đọc dữ liệu từ Google Sheet của user qua Sheets API. App không cache. Tiền tệ lưu dạng integer (VNĐ) trong Sheet để tránh lỗi floating point.
+Nhóm 1: Số dư
+Số dư hiện tạiSUM(wallet.balance WHERE is_credit=false) + SUM(THU sau balance_reset_at) − SUM(CHI tiền mặt sau balance_reset_at) − SUM(TIẾT KIỆM sau) − SUM(ĐẦU TƯ sau) − SUM(CHO VAY sau) + SUM(VAY NỢ sau)
+→ Đọc từ tab Wallets + Transactions. CHI bằng thẻ KHÔNG trừ vào đây.
+Số dư từng nguồnTính riêng cho từng wallet theo công thức trên, kèm "Cập nhật vào ngày [balance_reset_at]"
+→ Expand/collapse dưới mục "Số dư hiện tại"
+Nhóm 2: Thu nhập & Chi phí
+Thu nhập nămSUM(amount) WHERE type="THU" AND YEAR(date)=current_year
+→ Đọc từ tab Transactions
+Tổng chi phí nămSUM(amount) WHERE type="CHI" AND YEAR(date)=current_year
+→ Bao gồm CHI bằng thẻ tín dụng
+Chi phí TB thángTổng chi phí năm / số tháng đã có giao dịch CHI trong năm
+→ Tháng chưa có giao dịch không tính vào mẫu số
+Savings Rate %(Thu nhập năm − Tổng chi phí năm) / Thu nhập năm × 100
+→ Nếu âm → màu đỏ
+Nhóm 3: Tài sản
+Saving TotalSUM(amount) WHERE type="TIẾT KIỆM" AND saving_status="active"
+→ Chỉ tính khoản chưa rút. Khi mark đáo hạn → saving_status="closed" → tự trừ ra
+Tài sản đầu tưSUM(amount) WHERE type="ĐẦU TƯ" AND invest_status="active" GROUP BY invest_type
+→ Chỉ khoản chưa bán. Breakdown: Vàng / BĐS / Cổ phiếu / Trái phiếu / Quỹ mở
+Tổng tài sảnSố dư tổng + Saving Total + Tài sản đầu tư
+Net WorthTổng tài sản − Tổng nợ
+→ Nếu âm → màu đỏ. Click label → popup giải thích
+Nhóm 4: Nợ
+Dư nợ tín dụngSUM(amount) WHERE type="CHI" AND payment_method="credit" AND credit_status="unpaid" GROUP BY credit_card_name
+→ Tổng + breakdown theo từng thẻ
+Nợ người khácSUM(amount) WHERE type="VAY NỢ" AND loan_status="unpaid"
+→ Danh sách: tên, số tiền, ngày dự kiến trả
+Tổng nợDư nợ tín dụng + Nợ người khác
+→ Mục mẹ expand/collapse
+Nhóm 5: Receivables & Mục tiêu
+ReceivablesSUM(amount) WHERE type="CHO VAY" AND loan_status="unpaid" + SUM(paid_for_others) WHERE type="CHI" AND paid_for_others > 0
+→ Tiền người khác nợ mình (cho vay + trả hộ chưa được hoàn)
+Goal ProgressSố dư tổng / Target × 100
+→ % + progress bar + "Còn thiếu X₫". Target user đặt.
+3C. Công thức tính — Monthly Tracker
+Monthly Tracker chỉ tính giao dịch loại CHI (bao gồm CHI bằng thẻ tín dụng). TIẾT KIỆM, ĐẦU TƯ, CHO VAY, VAY NỢ không xuất hiện. Dữ liệu đọc từ tab "Transactions" trong Sheet.
+Tổng tuần NSUM(amount) WHERE type="CHI" AND category AND ngày ∈ tuần N của chu kỳ
+Tổng tháng (G)Tuần 1 + Tuần 2 + Tuần 3 + Tuần 4
+% Tổng (H)G / SUM(G tất cả danh mục) × 100
+→ Làm tròn 1 chữ số. Tổng cột H = 100%
+Ngân sách còn lại (J)Budget (B) − Tổng tháng (G) − Giữ lại (I)
+→ Xanh nếu ≥ 0, đỏ nếu < 0
+Total Saving thựcSUM(B) − SUM(G) − SUM(I)
+→ Dương = còn dư. Âm = vượt ngân sách tổng
+Information Architecture
+Navigation
+• ⚙️  Nguồn tiền — Setup và cập nhật nguồn tiền
+• 📝  Ghi chép — Quick Entry Form + Theo dõi tiết kiệm, nợ & Đầu tư (section phía dưới)
+• 📊  Monthly Tracker — Theo dõi và lập kế hoạch chi tiêu tháng
+• 💰  Tổng quan — Finance Overview
+• 🔒  Bảo mật (/security) — Đổi mật khẩu + Xem/đổi kết nối Google Sheet. [CẦN BUILD: Security.tsx]
+
+Lưu ý:
+• Kế hoạch ngân sách nằm trong Monthly Tracker (chế độ PLAN).
+• Chu kỳ tháng thay đổi trong Monthly Tracker (nút "Cài đặt chu kỳ").
+• Không có tab "Cài đặt" chung.
+
+Google Sheets Structure (per user)
+TabNội dungGhi bởiTransactionsToàn bộ giao dịch raw: type, amount, category, date, note, payment_method, credit_card_name, paid_for_others, invest_type, counterparty, due_date, loan_status, invest_status, saving_place, saving_term_months, saving_maturity_date, saving_statusApp (Edge Function)WalletsDanh sách nguồn tiền: name, type, is_credit, balance, balance_reset_atApp (Edge Function)MonthlyKế hoạch ngân sách theo tháng: category, budget_amount, month, yearApp (Edge Function)OverviewTarget tài chính do user đặt, cài đặt chu kỳ thángApp (Edge Function)
+
+4. Architecture Flows
+Kiến trúc dữ liệu — Sheets as Sole Backend
+Khác biệt cơ bản so với các phiên bản trước: WiseSpend KHÔNG có bảng transactions trong database của app. Mọi giao dịch đọc/ghi đều đi thẳng vào Google Sheet của user qua Supabase Edge Functions. Supabase chỉ lưu thông tin tài khoản (email, password hash, sheet_url).
+Flow: Ghi giao dịch mới
+L0 — Intent & Outcome
+Chi tiếtPainUser muốn ghi nhanh và chắc rằng data được lưu an toàn trong tay mìnhGoalGhi 1 giao dịch → lưu thẳng vào Google Sheet của user → dashboard cập nhậtOutcomeUser thấy "✓ Đã lưu vào Sheet" — mở Drive verify bất kỳ lúc nào
+L1 — Business Flow
+62. User điền form và nhấn Lưu.
+63. Web app gọi Supabase Edge Function (không lưu vào DB của app).
+64. Edge Function lấy sheet_url từ Supabase Auth profile của user.
+65. Edge Function gọi Google Sheets API: append row vào tab "Transactions" của Sheet user.
+66. Nếu thành công: hiện "✓ Đã lưu vào Sheet" + micro-feedback. Dashboard tự đọc lại từ Sheet.
+67. Nếu thất bại: hiện thông báo lỗi rõ ràng. Không có retry queue — user retry thủ công hoặc kiểm tra kết nối Sheet.
+
+L2 — User Flow
+flowchart TD   Start["Mở WiseSpend (default: form CHI)"]   --> Auth{"Đã kết nối Sheet?"}   Auth -->|Chưa| Activation["Màn hình Activation (Story 2)"]   Auth -->|Rồi| Form["Quick Entry Form"]   Form --> Fill["Điền: Số tiền + Tab + Ngày"]   Fill --> CreditCheck{"CHI + thẻ tín dụng?"}   CreditCheck -->|Có| CreditFlow["Chọn thẻ + Trả hộ?"]   CreditCheck -->|Không| Submit["Nhấn Lưu"]   CreditFlow --> Submit   Submit --> EdgeFn["Supabase Edge Function"]   EdgeFn --> SheetsAPI["Google Sheets API → append row vào Sheet user"]   SheetsAPI -->|OK| Success["✓ Đã lưu vào Sheet + Micro-feedback"]   SheetsAPI -->|Fail| Error["Hiện lỗi cụ thể → user retry"]
+L3 — System Flow
+flowchart TD   Client["Browser (Web App)"]   --> EdgeFn["POST Supabase Edge Function /write-transaction"]   EdgeFn --> AuthCheck["Lấy sheet_url từ Supabase Auth (user.user_metadata.sheet_url)"]   AuthCheck --> Sheets["Google Sheets API: spreadsheets.values.append\ntab=Transactions, values=[row data]"]   Sheets -->|200 OK| Resp200["Response: {success: true}"]   Sheets -->|Error| RespErr["Response: {success: false, error: message}"]   Resp200 --> Client   RespErr --> Client    ReadClient["Browser (Dashboard load)"]   --> ReadEdge["GET Supabase Edge Function /read-data"]   ReadEdge --> ReadSheets["Google Sheets API: spreadsheets.values.get\nall tabs"]   ReadSheets --> Compute["Edge Function tính toán aggregates"]   Compute --> ReadResp["Response: {transactions, balances, overview}"]   ReadResp --> ReadClient
+Flow: Activation — Kết nối Sheet
+L1 — Business Flow
+68. User click "Tạo Sheet cá nhân" → app mở link template WiseSpend trong tab mới.
+69. User tự thao tác: Make a copy → Share với email bot (Editor) → copy URL.
+70. User paste URL vào app → nhấn "Kết nối".
+71. Edge Function verify: gọi Sheets API với URL đó, kiểm tra bot có quyền Editor không.
+72. Verify thành công → lưu sheet_url vào Supabase user_metadata → chuyển sang Onboarding.
+73. Verify thất bại → hiện lỗi cụ thể (URL sai / Bot chưa được cấp quyền).
+
+
+5. Non-Functional Requirements
+RequirementTargetPerformanceGhi 1 giao dịch vào Sheet < 3 giây. Đọc dashboard (load tất cả từ Sheet) < 5 giây. Micro-feedback hiện ngay sau khi Edge Function trả về.ReliabilityNếu Sheets API fail → hiện lỗi rõ ràng cho user. Không có silent fail. Không có retry queue — user retry thủ công.Data PrivacyWiseSpend KHÔNG lưu dữ liệu giao dịch trên server. Supabase chỉ lưu: email, password hash, sheet_url. Không có bảng transactions trong DB của app.SecurityActivation token one-time-use, hết hạn 72h. HTTPS bắt buộc. Bot chỉ có quyền Editor trên Sheet của user — không có quyền admin Drive.Sheets API Quota300 requests/phút/project. Dùng batch read khi load dashboard. Monitor khi > 200 users.ScalabilityMỗi user có Sheet riêng — không có shared database. Scale theo số Edge Function instances, không phải DB.AccessibilityKeyboard navigation đầy đủ. WCAG AA contrast. Minimum 1366×768. Design target 1920×1080.Data OwnershipUser sở hữu hoàn toàn Sheet — có thể xóa tài khoản WiseSpend mà không mất data. Xóa tài khoản → xóa email + sheet_url khỏi Supabase, Sheet trong Drive không bị ảnh hưởng.
+
+6. Technical Considerations
+Tech Stack
+LayerTechnologyVai tròFrontendNext.js 14 (React)Render UI, gọi Edge Functions, hiển thị dashboardStylingTailwind CSS + GlassmorphismPremium aesthetic, dark/light modeBackend FunctionsSupabase Edge Functions (Deno)Cầu nối giữa web app và Google Sheets API. Không lưu data.Auth onlySupabase AuthLưu: email, password hash, sheet_url trong user_metadata. KHÔNG lưu giao dịch.Database of appSupabase (chỉ Auth) — KHÔNG có bảng transactions/wallets/budgetsChỉ quản lý tài khoản userData BackendGoogle Sheets (per-user Sheet)Lưu trữ duy nhất mọi dữ liệu tài chính của userSheets IntegrationGoogle Sheets API v4 + googleapisRead/write/append/update/delete rowsHostingVercel (Next.js) + Supabase (Auth + Edge Functions)Deploy từ Git, free tier đủ MVPChartsRechartsBiểu đồ tròn Monthly Tracker, bar chart Finance OverviewMonitoringVercel Analytics + SentryError tracking, Sheets API failure alerts
+Edge Functions — Danh sách chính
+FunctionMethodMô tảwrite-transactionPOSTAppend 1 row vào tab Transactions của Sheet userupdate-transactionPUTCập nhật 1 row trong tab Transactions (khi sửa giao dịch)delete-transactionDELETEXóa 1 row trong tab Transactionswrite-walletPOST/PUTGhi/cập nhật nguồn tiền vào tab Walletswrite-budgetPOST/PUTGhi kế hoạch ngân sách vào tab Monthlyread-dashboardGETĐọc tất cả tabs cần thiết, tính aggregates, trả về cho dashboardverify-sheetPOSTKiểm tra URL Sheet hợp lệ và bot có quyền Editor (dùng trong Activation)
+Lưu ý kỹ thuật quan trọng
+Wallet Hybrid Model cho Dev:  1. wallet.balance trong tab Wallets là con số user tự nhập thủ công. Lưu kèm balance_reset_at.  2. Số dư hiển thị của nguồn X = wallet.balance + SUM(THU sau balance_reset_at) − SUM(CHI tiền mặt sau) − SUM(TIẾT KIỆM sau) − SUM(ĐẦU TƯ sau) − SUM(CHO VAY sau) + SUM(VAY NỢ sau). CHI bằng thẻ KHÔNG trừ vào đây.  3. Khi user cập nhật lại số dư: ghi wallet.balance = giá trị mới, balance_reset_at = NOW() vào tab Wallets. Rows cũ trong Transactions vẫn giữ nguyên — chỉ bị loại ra khỏi phép tính vì date < balance_reset_at.  4. Không có reset tự động theo chu kỳ tháng hay bất kỳ lịch trình nào.
+
+7. UI/UX Direction
+Ưu tiên phiên bản này: UX đúng và đủ trước — visual polish tính sau. Thông điệp "Your Data, Your Ownership" cần được truyền đạt rõ ràng, đặc biệt ở màn hình Activation.
+Design Language
+ElementChi tiếtAestheticHiện đại, Premium — Glassmorphism, hỗ trợ Dark/Light modePrimary#2563EB — Xanh dương, tin cậyPositive#10B981 — Xanh lá, saving, tốtDanger#EF4444 — Đỏ, nợ, vượt budgetWarning/Investment#F59E0B — Vàng, trung tínhReceivables#7C3AED — TímBackground#F9FAFB (light) / #0F172A (dark)FontBe Vietnam Pro — Hỗ trợ tiếng Việt, rõ ràng, modernBrand KeywordsTin cậy · Minh bạch · Gọn nhẹ · Chủ động · Riêng tư
+Key Interaction Patterns
+• PC-first. Design target 1920×1080 (16:9). Minimum 1366×768.
+• Ghi chép là default screen khi mở app.
+• Shortcut "N" → mở form ghi mới từ bất kỳ màn hình nào.
+• Tab giao dịch: phím 1=THU, 2=CHI, 3=TIẾT KIỆM, 4=ĐẦU TƯ, 5=CHO VAY/VAY NỢ.
+• Activation screen: step-by-step rõ ràng, có ảnh/GIF hướng dẫn, email bot có nút Copy 1 click.
+• Section "Theo dõi tiết kiệm, nợ & Đầu tư": badge active, click expand, 3 sub-section.
+• Monthly Tracker: TRACK/PLAN phân biệt rõ bằng màu nền + label.
+• Finance Overview: expand/collapse, Net Worth có "?" tooltip.
+• Lỗi Sheets API: hiện thông báo thân thiện, không expose lỗi kỹ thuật raw.
+• Empty state: luôn có gợi ý hành động cụ thể.
+
+
+8. Risks & Mitigations
+RiskImpactLikelihoodMitigationActivation friction cao — user bỏ cuộc ở bước Share quyền Editor hoặc paste URLHighHighUX cực kỳ rõ ràng: step-by-step, ảnh hướng dẫn từng click, email bot có nút Copy 1 click. Verify URL ngay để feedback tức thì.Sheets API fail → user mất giao dịch (không có retry queue)HighMediumHiện lỗi rõ ràng, hướng dẫn retry. Cân nhắc thêm local draft (lưu tạm trong localStorage) để user không mất data khi mạng yếu.Google Sheets API rate limit khi scaleHighMediumBatch read khi load dashboard. Monitor từ 200 users. Mỗi user có Sheet riêng nên quota ít bị ảnh hưởng chéo.User vô tình xóa hoặc đổi cấu trúc Sheet templateHighMediumThêm verify cấu trúc Sheet khi load dashboard. Hiện cảnh báo nếu tab hoặc column header bị thay đổi.User mất quyền truy cập Sheet (xóa bot khỏi Share)HighMediumDetect lỗi 403 từ Sheets API → hiện hướng dẫn re-share cho bot. Redirect về màn hình Activation để cấp lại quyền.Scope creep trước khi launchMediumHighFreeze feature list. Mọi yêu cầu mới vào backlog V2.User nhầm lẫn giữa 5 loại giao dịchMediumMediumIcon + màu sắc rõ từng tab. Tooltip giải thích khi hover. Cho phép sửa/xóa sau khi lưu.
+
+9. Timeline & Milestones
+PhaseScopeDurationTargetPhase 0 — DesignFigma prototype màn hình Activation, Quick Entry, Monthly Tracker. Usability test 3–5 user.2 tuầnTuần 1–2Phase 1 — Auth + ActivationKích hoạt tài khoản, đăng nhập, Activation flow (3 bước), verify Sheet URL, Supabase Edge Function verify-sheet.3 tuầnTuần 3–5Phase 2 — Core TransactionQuick Entry Form (5 loại), write/read Edge Functions, Nguồn tiền (Hybrid Model), micro-feedback, CRUD giao dịch.4 tuầnTuần 6–9Phase 3 — DashboardMonthly Tracker (2 chế độ TRACK/PLAN), Finance Overview, biểu đồ tròn, Theo dõi tiết kiệm/nợ/đầu tư.4 tuầnTuần 10–13Phase 4 — Polish & LaunchOnboarding, Reflection notes, auto-categorization, bug fixes, dark/light mode, onboard 10–20 beta user.3 tuầnTuần 14–16Phase 5 — IterateCohort analysis, V2 roadmap (mobile, local draft khi offline, tất toán nợ tín dụng).OngoingTừ tuần 17
+
+10. Open Questions
+#Câu hỏiCần từ aiPriority1Flow tất toán nợ tín dụng: khi user thanh toán dư nợ thẻ → cần loại giao dịch mới "Tất toán thẻ" hay dùng CHI thường? Tác động đến Dư nợ thẻ như thế nào?Product decisionHigh2Nếu Sheets API fail khi ghi giao dịch: có cần local draft (lưu tạm localStorage) để user không mất data khi mạng yếu không? Trade-off: thêm complexity nhưng tăng reliability.Product decisionHigh3Verify cấu trúc Sheet khi load: nếu user vô tình xóa tab hoặc đổi tên column → app xử lý thế nào? Hiện lỗi và hướng dẫn restore, hay tự động tạo lại tab thiếu?Technical investigationHigh4Đầu tư: MVP chỉ track cost basis (số tiền đã bỏ vào) hay cần mark-to-market (giá trị hiện tại)? Mark-to-market cần user tự cập nhật giá định kỳ.User researchMedium5Mốc thời gian tháng: nếu user muốn đổi chu kỳ sau khi đã có data → áp dụng từ tháng mới hay tính lại lịch sử?Product decisionMedium6Admin tool: PO cần UI gì để whitelist email user, hay dùng thẳng Supabase dashboard đủ rồi?Product decisionLow7Danh mục THU mặc định là gì? (Lương, Thưởng, Thu nhập thụ động, Khác) hay để user tự tạo hoàn toàn?User interviewLow
+— Hết PRD v9.0 — WiseSpend · Your Data, Your Ownership —
