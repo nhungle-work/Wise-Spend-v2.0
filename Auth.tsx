@@ -11,6 +11,7 @@ export function Auth() {
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -39,6 +40,22 @@ export function Auth() {
       setError(err.message || 'Đã có lỗi xảy ra');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSignUp) {
+      // Mock Sign Up logic for now as requested
+      setLoading(true);
+      setError(null);
+      setTimeout(() => {
+        setLoading(false);
+        alert('Đăng ký thành công (Mô phỏng)! Hệ thống đã nhận thông tin.');
+        setIsSignUp(false);
+      }, 1000);
+    } else {
+      handleLogin(e);
     }
   };
 
@@ -82,7 +99,9 @@ export function Auth() {
         <div className="bg-white/[0.07] backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
           {!showForgot ? (
             <>
-              <h2 className="text-xl font-bold text-white mb-6">Đăng nhập</h2>
+              <h2 className="text-xl font-bold text-white mb-6">
+                {isSignUp ? 'Đăng ký tài khoản' : 'Đăng nhập'}
+              </h2>
               
               {error && (
                 <div className="bg-red-500/10 border border-red-500/20 text-red-300 p-4 rounded-xl text-sm flex items-start gap-3 mb-5">
@@ -91,7 +110,7 @@ export function Auth() {
                 </div>
               )}
 
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-blue-300/70 uppercase tracking-wider block">
                     Email
@@ -126,15 +145,17 @@ export function Auth() {
                   </div>
                 </div>
 
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => { setShowForgot(true); setError(null); }}
-                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
-                  >
-                    Quên mật khẩu?
-                  </button>
-                </div>
+                {!isSignUp && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setShowForgot(true); setError(null); }}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium"
+                    >
+                      Quên mật khẩu?
+                    </button>
+                  </div>
+                )}
 
                 <button
                   type="submit"
@@ -142,14 +163,24 @@ export function Auth() {
                   className="w-full flex items-center justify-center gap-2 py-3.5 mt-2 bg-blue-600 text-white font-bold rounded-xl text-sm uppercase tracking-widest shadow-lg shadow-blue-900/40 hover:bg-blue-500 active:scale-[0.98] transition-all disabled:opacity-50"
                 >
                   {loading ? 'ĐANG XỬ LÝ...' : (
-                    <>ĐĂNG NHẬP <ArrowRight className="w-4 h-4" /></>
+                    isSignUp ? (
+                      <>ĐĂNG KÝ <ArrowRight className="w-4 h-4" /></>
+                    ) : (
+                      <>ĐĂNG NHẬP <ArrowRight className="w-4 h-4" /></>
+                    )
                   )}
                 </button>
               </form>
 
-              <p className="text-center text-xs text-white/30 mt-6">
-                Chưa có tài khoản? Liên hệ quản trị viên để được cấp quyền truy cập.
-              </p>
+              <div className="text-center mt-6 text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setIsSignUp(!isSignUp); setError(null); }}
+                  className="text-blue-400 hover:text-blue-300 font-bold transition-colors"
+                >
+                  {isSignUp ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký tài khoản'}
+                </button>
+              </div>
             </>
           ) : (
             <>
