@@ -48,6 +48,7 @@ export function Record() {
   const [customCategory, setCustomCategory] = useState('');
   const [savingsInstitution, setSavingsInstitution] = useState('');
   const [debtPartner, setDebtPartner] = useState('');
+  const [debtType, setDebtType] = useState<'Cho vay' | 'Nợ' | ''>('');
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [note, setNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -333,6 +334,7 @@ export function Record() {
     setCategory('Chọn danh mục');
     setCustomCategory('');
     setDebtPartner('');
+    setDebtType('');
     setSavingsInstitution('');
   }, [activeTab]);
 
@@ -390,6 +392,14 @@ export function Record() {
         }
         finalCategory = savingsInstitution.trim();
         finalDate = savingsDepositDate;
+      } else if (activeTab === 'VAY / NỢ') {
+        if (!debtType) {
+          throw new Error("Vui lòng chọn Cho vay hoặc Nợ.");
+        }
+        if (!debtPartner.trim()) {
+          throw new Error("Vui lòng nhập tên người liên quan.");
+        }
+        finalCategory = `${debtType} - ${debtPartner.trim()}`;
       } else {
         if (category === 'Chọn danh mục') {
           throw new Error("Vui lòng chọn danh mục.");
@@ -400,11 +410,6 @@ export function Record() {
             throw new Error("Vui lòng điền tên danh mục tự chọn");
           }
           finalCategory = customCategory.trim();
-        } else if (activeTab === 'VAY / NỢ') {
-          if (!debtPartner.trim()) {
-            throw new Error("Vui lòng nhập tên người cho vay/nợ.");
-          }
-          finalCategory = `${category} - ${debtPartner.trim()}`;
         }
       }
 
@@ -639,13 +644,30 @@ export function Record() {
                         {INVESTMENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     ) : activeTab === 'VAY / NỢ' ? (
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm appearance-none outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-bold text-slate-800"
-                      >
-                        {DEBT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDebtType('Cho vay')}
+                          className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all border-2 ${
+                            debtType === 'Cho vay'
+                              ? 'bg-emerald-500 text-white border-emerald-500'
+                              : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          Cho vay
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDebtType('Nợ')}
+                          className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all border-2 ${
+                            debtType === 'Nợ'
+                              ? 'bg-red-500 text-white border-red-500'
+                              : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          Nợ
+                        </button>
+                      </div>
                     ) : (
                       <select
                         value={category}
@@ -655,7 +677,9 @@ export function Record() {
                         {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     )}
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                    {activeTab !== 'VAY / NỢ' && (
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                    )}
                   </div>
 
                   {/* Custom Category Input if "Khác" is selected */}
@@ -685,7 +709,13 @@ export function Record() {
                         type="text"
                         value={debtPartner}
                         onChange={(e) => setDebtPartner(e.target.value)}
-                        placeholder="Người cho vay/nợ (VD: Anh Nam, Mẹ...)"
+                        placeholder={
+                          debtType === 'Cho vay'
+                            ? 'Người vay (VD: Anh Nam, Bạn Bình...)'
+                            : debtType === 'Nợ'
+                            ? 'Người cho vay (VD: Mẹ, Anh Hai...)'
+                            : 'Chọn loại bên trên trước...'
+                        }
                         className="w-full bg-white border border-blue-400 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-bold text-slate-800 placeholder-slate-400"
                         required
                       />

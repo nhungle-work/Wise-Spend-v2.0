@@ -51,7 +51,9 @@ export function Overview() {
             category: r[2],
             type: r[3],
             amount: Number(r[4] || 0),
-            note: r[5]
+            note: r[5],
+            payment_method: r[6] || '',
+            credit_card_name: r[7] || ''
           })).filter((t: any) => t.id);
           setHistoryTxs(formatted);
         } else {
@@ -85,11 +87,25 @@ export function Overview() {
   const totalExpense = historyTxs.filter(t => t.type === 'CHI').reduce((sum, t) => sum + Number(t.amount || 0), 0);
   const totalSavings = historyTxs.filter(t => t.type === 'TIẾT KIỆM').reduce((sum, t) => sum + Number(t.amount || 0), 0);
   const totalInvestment = historyTxs.filter(t => t.type === 'ĐẦU TƯ').reduce((sum, t) => sum + Number(t.amount || 0), 0);
-  const totalDebt = historyTxs.filter(t => t.type === 'VAY / NỢ').reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const totalDebt = historyTxs
+    .filter(t => t.type === 'VAY / NỢ' && t.category?.includes('Nợ') && !t.category?.includes('Cho vay'))
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const totalReceivables = historyTxs
+    .filter(t => t.type === 'VAY / NỢ' && t.category?.includes('Cho vay'))
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+  // Credit card debt: CHI transactions paid by credit card
+  const creditTxs = historyTxs.filter(t => t.type === 'CHI' && t.payment_method === 'credit');
+  const totalCreditDebt = creditTxs.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const creditDebtByCard: Record<string, number> = {};
+  creditTxs.forEach(t => {
+    const cardName = t.credit_card_name || 'Thẻ không tên';
+    creditDebtByCard[cardName] = (creditDebtByCard[cardName] || 0) + Number(t.amount || 0);
+  });
 
   // 3. Dynamic aggregates
   const currentBalance = totalBaseWallets + totalIncome - totalExpense - totalSavings - totalInvestment;
-  const netWorth = currentBalance + totalSavings + totalInvestment - totalDebt;
+  const netWorth = currentBalance + totalSavings + totalInvestment + totalReceivables - totalDebt - totalCreditDebt;
 
   const totalAssets = currentBalance + totalSavings + totalInvestment;
   const savingsRate = totalIncome > 0 ? (((totalSavings + totalInvestment) / totalIncome) * 100).toFixed(1) : "0.0";
@@ -243,23 +259,40 @@ export function Overview() {
               <div className="space-y-4 flex-1">
                 <div className="p-4 bg-red-50/50 rounded-xl border border-red-100 flex justify-between items-center">
                   <div>
-                     <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider mb-0.5">DƯ NỢ GHI NHẬN</p>
+                     <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider mb-0.5">MÌNH ĐANG NỢ</p>
                      <p className="text-base font-black text-slate-900">{totalDebt.toLocaleString('vi-VN')} đ</p>
                   </div>
                   <CreditCard className="w-5 h-5 text-red-300" />
                 </div>
-                
-                {creditCards.map(cc => (
-                  <div key={cc.id} className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex justify-between items-center text-xs font-semibold text-slate-700 animate-in fade-in slide-in-from-top-1">
-                    <span className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-red-500" />
-                      {cc.cleanName}
-                    </span>
-                    <span className="font-bold text-slate-500 text-[10px] bg-slate-100 px-1.5 py-0.5 rounded">Thẻ tín dụng</span>
+                {totalReceivables > 0 && (
+                  <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100 flex justify-between items-center">
+                    <div>
+                      <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-0.5">ĐANG CHO VAY</p>
+                      <p className="text-base font-black text-slate-900">{totalReceivables.toLocaleString('vi-VN')} đ</p>
+                    </div>
+                    <CreditCard className="w-5 h-5 text-emerald-300" />
                   </div>
-                ))}
+                )}
                 
-                {totalDebt === 0 && creditCards.length === 0 && (
+                {totalCreditDebt > 0 && (
+                  <div className="p-4 bg-orange-50/50 rounded-xl border border-orange-100">
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="text-[10px] font-bold text-orange-600 uppercase tracking-wider">Dư nợ thẻ tín dụng</p>
+                      <p className="text-sm font-black text-slate-900">{totalCreditDebt.toLocaleString('vi-VN')} đ</p>
+                    </div>
+                    {Object.entries(creditDebtByCard).map(([cardName, amount]) => (
+                      <div key={cardName} className="flex justify-between items-center py-1.5 border-t border-orange-100/60 mt-1">
+                        <span className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
+                          <CreditCard className="w-3.5 h-3.5 text-orange-400" />
+                          {cardName}
+                        </span>
+                        <span className="text-xs font-bold text-orange-600">{(amount as number).toLocaleString('vi-VN')} đ</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {totalDebt === 0 && totalCreditDebt === 0 && creditCards.length === 0 && (
                   <div className="bg-slate-50 rounded-xl border border-slate-200 p-8 text-center text-xs text-slate-400 font-bold">
                     Tuyệt vời! Bạn không có khoản nợ nào.
                   </div>
@@ -267,11 +300,11 @@ export function Overview() {
               </div>
 
              <div className="mt-8 pt-6 border-t border-slate-100">
-               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Dư nợ cần thanh toán</p>
+               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tổng nợ phải trả</p>
                <div className="flex justify-between items-baseline">
-                 <p className="text-2xl font-black text-red-500">{totalDebt.toLocaleString('vi-VN')} đ</p>
+                 <p className="text-2xl font-black text-red-500">{(totalDebt + totalCreditDebt).toLocaleString('vi-VN')} đ</p>
                  <p className="text-xs font-bold text-red-600 flex items-center gap-1 bg-red-50 px-2 py-1 rounded">
-                   Hạn thanh toán hàng tháng <Info className="w-3 h-3" />
+                   Vay + Thẻ tín dụng <Info className="w-3 h-3" />
                  </p>
                </div>
              </div>
