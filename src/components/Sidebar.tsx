@@ -6,7 +6,6 @@ import {
   CalendarDays, 
   LayoutDashboard, 
   Shield,
-  Plus,
   Settings,
   LogOut
 } from 'lucide-react';
@@ -56,12 +55,7 @@ export function Sidebar() {
           </NavLink>
         ))}
 
-        <div className="mt-4 px-2">
-          <button className="w-full bg-blue-600 text-white rounded-lg py-3 flex items-center justify-center gap-2 text-sm font-bold shadow-sm hover:bg-blue-700 active:scale-95 transition-all">
-            <Plus className="w-5 h-5" />
-            Thêm giao dịch
-          </button>
-        </div>
+
       </nav>
 
       <div className="mt-auto px-2 pb-6 pt-4 border-t border-slate-200">
